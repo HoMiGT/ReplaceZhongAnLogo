@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <opencv2/opencv.hpp>
 #include <vector>
+#include "convertEncodingFormat.h"
 // #include <QDebug>
 
 ReplaceTask::ReplaceTask(ReplaceParams &&params)
@@ -44,13 +45,34 @@ bool ReplaceTask::replace_logo(const QString& logoPath,
     {
         const auto &name = img.baseName();
         const auto saveName = QString("%1/%2.png").arg(saveDir, name);
-        const auto absImgPath = img.absoluteFilePath().toStdString();
-
+        auto absImgPath = img.absoluteFilePath();
+        std::string absStdImgPath{};
+        std::string saveStdName{};
+        if (const auto ret = IsUtf8(); ret)
+        {
+            absStdImgPath = absImgPath.toStdString();
+            saveStdName = saveName.toStdString();
+        }else
+        {
+            bool convertState{};
+            absStdImgPath = WideToLocalACP(absImgPath.toStdWString(),convertState);
+            if (!convertState)
+            {
+                m_error = QString("图片路径编码转换失败: %1").arg(absImgPath);
+                return false;
+            }
+            saveStdName = WideToLocalACP(saveName.toStdWString(),convertState);
+            if (!convertState)
+            {
+                m_error = QString("保存路径编码转换失败: %1").arg(saveName);
+                return false;
+            }
+        }
         // 读取底图
-        cv::Mat background = cv::imread(absImgPath, cv::IMREAD_UNCHANGED);
+        cv::Mat background = cv::imread(absStdImgPath, cv::IMREAD_UNCHANGED);
         if (background.empty())
         {
-            m_error = QString("无法读取底图: %1").arg(img.absolutePath());
+            m_error = QString("无法读取底图: %1").arg(QString::fromStdString(absStdImgPath));
             return false;
         }
 
@@ -154,7 +176,7 @@ bool ReplaceTask::replace_logo(const QString& logoPath,
         }
 
         // 保存图像
-        if (!cv::imwrite(saveName.toStdString(), background))
+        if (!cv::imwrite(saveStdName, background))
         {
             m_error = QString("无法保存图片: %1").arg(saveName);
             return false;
